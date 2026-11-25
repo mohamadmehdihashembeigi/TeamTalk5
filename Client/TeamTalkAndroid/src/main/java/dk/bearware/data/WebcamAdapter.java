@@ -84,6 +84,7 @@ public class WebcamAdapter extends MediaAdapter implements ClientEventListener.O
             prev_bmp = Bitmap.createBitmap(wnd.nWidth, wnd.nHeight, Bitmap.Config.ARGB_8888);
         }
         
+        convertBgraToRgba(wnd.frameBuffer);
         prev_bmp.copyPixelsFromBuffer(ByteBuffer.wrap(wnd.frameBuffer));
         
         return prev_bmp;

@@ -478,6 +478,14 @@ public class TeamTalkService extends Service
         return preferFrontCamera;
     }
 
+    public int getVideoOutputWidth() {
+        return (cameraCapturer != null) ? cameraCapturer.getOutputWidth() : 480;
+    }
+
+    public int getVideoOutputHeight() {
+        return (cameraCapturer != null) ? cameraCapturer.getOutputHeight() : 640;
+    }
+
     public boolean hasMultipleCameras() {
         CameraVideoCapturer cap = (cameraCapturer != null)
                 ? cameraCapturer
@@ -540,7 +548,7 @@ public class TeamTalkService extends Service
 
         VideoCodec vidcodec = new VideoCodec();
         vidcodec.nCodec = Codec.WEBM_VP8_CODEC;
-        vidcodec.webm_vp8.nRcTargetBitrate = 256;
+        vidcodec.webm_vp8.nRcTargetBitrate = 384;
 
         if (!ttclient.startVideoCaptureTransmission(vidcodec)) {
             Log.e(TAG, "startVideoCaptureTransmission failed");
