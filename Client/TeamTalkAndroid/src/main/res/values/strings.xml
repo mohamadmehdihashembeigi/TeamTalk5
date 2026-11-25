@@ -558,4 +558,14 @@
     <string name="online_user_info_ip">IPAddress</string>
     <string name="online_user_info_client">Client</string>
     <string name="text_copy">Copy</string>
+    <string name="permission_camera">Camera video transmission will be unavailable</string>
+    <string name="action_start_video">Start webcam</string>
+    <string name="action_stop_video">Stop webcam</string>
+    <string name="action_switch_camera">Switch camera</string>
+    <string name="video_started_front">Front camera started</string>
+    <string name="video_started_back">Back camera started</string>
+    <string name="video_stopped">Webcam stopped</string>
+    <string name="err_start_video">Failed to start webcam</string>
+    <string name="err_video_not_in_channel">Join a channel first to transmit webcam video</string>
+    <string name="local_camera_preview_desc">Local camera preview</string>
 </resources>

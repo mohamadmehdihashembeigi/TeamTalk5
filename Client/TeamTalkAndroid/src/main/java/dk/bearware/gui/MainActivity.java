@@ -34,6 +34,7 @@ import android.content.DialogInterface;
 import android.content.Intent;
 import android.database.Cursor;
 import android.graphics.Color;
+import android.graphics.SurfaceTexture;
 import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
@@ -61,6 +62,8 @@ import android.view.LayoutInflater;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.MotionEvent;
+import android.view.Surface;
+import android.view.TextureView;
 import android.view.View;
 import android.view.View.OnClickListener;
 import android.view.View.OnTouchListener;
@@ -156,6 +159,7 @@ extends AppCompatActivity
         OnMenuItemClickListener,
         SensorEventListener,
         OnVoiceTransmissionToggleListener,
+        TeamTalkService.OnVideoCaptureStateListener,
         ClientEventListener.OnConnectionLostListener,
         ClientEventListener.OnCmdProcessingListener,
         ClientEventListener.OnCmdMyselfLoggedInListener,
@@ -248,6 +252,7 @@ extends AppCompatActivity
 
     private Context ctx;
     private PrefsHelper prefs;
+    private Surface localPreviewSurface;
 
     public ChannelListAdapter getChannelsAdapter() {
         return channelsAdapter;
@@ -363,6 +368,12 @@ extends AppCompatActivity
         boolean isJoinable = curchannel != null && getClient().getMyChannelID() != curchannel.nChannelID && curchannel.nMaxUsers > 0;
         boolean isLeaveable = getClient().getMyChannelID() > 0;
         boolean isMyChannel = curchannel != null && getClient().getMyChannelID() == curchannel.nChannelID;
+        boolean isVideoTx = getService().isVideoTransmissionEnabled();
+        boolean canVideoTx = isLeaveable && ((myuseraccount.uUserRights & UserRight.USERRIGHT_TRANSMIT_VIDEOCAPTURE) != UserRight.USERRIGHT_NONE);
+        menu.findItem(R.id.action_toggle_video).setEnabled(canVideoTx || isVideoTx).setVisible(canVideoTx || isVideoTx);
+        menu.findItem(R.id.action_toggle_video).setTitle(isVideoTx ? R.string.action_stop_video : R.string.action_start_video);
+        boolean canSwitchCam = isVideoTx && getService().hasMultipleCameras();
+        menu.findItem(R.id.action_switch_camera).setEnabled(canSwitchCam).setVisible(canSwitchCam);
         menu.findItem(R.id.action_pause).setEnabled(isStreaming).setVisible(isStreaming);
         menu.findItem(R.id.action_pause).setTitle(isPaused ? R.string.action_resume : R.string.action_pause);
         menu.findItem(R.id.action_edit).setEnabled(isEditable).setVisible(isEditable);
@@ -399,6 +410,10 @@ extends AppCompatActivity
             alert.setNegativeButton(android.R.string.no, null);
             alert.setView(input);
             alert.show();
+        } else if (itemId == R.id.action_toggle_video) {
+            toggleVideoTransmission();
+        } else if (itemId == R.id.action_switch_camera) {
+            switchCameraTransmission();
         } else if (itemId == R.id.action_stream) {
             int flags = getClient().getFlags();
             if ((flags & ClientFlag.CLIENT_STREAM_AUDIO) == ClientFlag.CLIENT_STREAM_AUDIO || (flags & ClientFlag.CLIENT_STREAM_VIDEO) == ClientFlag.CLIENT_STREAM_VIDEO) {
@@ -964,6 +979,9 @@ extends AppCompatActivity
     }
 
     private void leaveChannel() {
+        if ((mConnection != null) && mConnection.isBound()) {
+            getService().stopVideoCapture();
+        }
         getClient().doLeaveChannel();
         accessibilityAssistant.lockEvents();
         channelsAdapter.notifyDataSetChanged();
@@ -1189,6 +1207,10 @@ private EditText newmsg;
 
     public static class MediaSectionFragment extends Fragment {
         MainActivity mainActivity;
+        Button toggleVideoBtn;
+        Button switchCameraBtn;
+        TextureView localPreviewView;
+        Surface ownedSurface;
 
         public MediaSectionFragment() {
         }
@@ -1205,9 +1227,59 @@ private EditText newmsg;
             View rootView = inflater.inflate(R.layout.fragment_main_media, container, false);
             mainActivity.accessibilityAssistant.registerPage(rootView, SectionsPagerAdapter.MEDIA_PAGE);
 
+            toggleVideoBtn = rootView.findViewById(R.id.toggle_video_btn);
+            switchCameraBtn = rootView.findViewById(R.id.switch_camera_btn);
+            localPreviewView = rootView.findViewById(R.id.local_camera_preview);
+
+            toggleVideoBtn.setOnClickListener(v -> mainActivity.toggleVideoTransmission());
+            switchCameraBtn.setOnClickListener(v -> mainActivity.switchCameraTransmission());
+
+            localPreviewView.setSurfaceTextureListener(new TextureView.SurfaceTextureListener() {
+                @Override
+                public void onSurfaceTextureAvailable(@NonNull SurfaceTexture surfaceTexture, int width, int height) {
+                    if (ownedSurface != null) {
+                        ownedSurface.release();
+                    }
+                    ownedSurface = new Surface(surfaceTexture);
+                    mainActivity.onLocalPreviewSurfaceChanged(ownedSurface);
+                }
+
+                @Override
+                public void onSurfaceTextureSizeChanged(@NonNull SurfaceTexture surfaceTexture, int width, int height) {
+                }
+
+                @Override
+                public boolean onSurfaceTextureDestroyed(@NonNull SurfaceTexture surfaceTexture) {
+                    mainActivity.onLocalPreviewSurfaceChanged(null);
+                    if (ownedSurface != null) {
+                        ownedSurface.release();
+                        ownedSurface = null;
+                    }
+                    return true;
+                }
+
+                @Override
+                public void onSurfaceTextureUpdated(@NonNull SurfaceTexture surfaceTexture) {
+                }
+            });
+
             ExpandableListView mediaview = rootView.findViewById(R.id.media_elist_view);
             mediaview.setAdapter(mainActivity.getMediaAdapter());
+            mainActivity.refreshVideoUi();
             return rootView;
+        }
+
+        void updateVideoControls(boolean active, boolean hasMultipleCameras) {
+            if (toggleVideoBtn != null) {
+                toggleVideoBtn.setText(active ? R.string.action_stop_video : R.string.action_start_video);
+                toggleVideoBtn.setContentDescription(getString(active ? R.string.action_stop_video : R.string.action_start_video));
+            }
+            if (switchCameraBtn != null) {
+                switchCameraBtn.setVisibility((active && hasMultipleCameras) ? View.VISIBLE : View.GONE);
+            }
+            if (localPreviewView != null) {
+                localPreviewView.setVisibility(active ? View.VISIBLE : View.GONE);
+            }
         }
     }
 
@@ -2059,6 +2131,8 @@ private EditText newmsg;
         service.getEventHandler().registerOnVoiceActivation(this, true);
 
         service.setOnVoiceTransmissionToggleListener(this);
+        service.setOnVideoCaptureStateListener(this);
+        refreshVideoUi();
 
         adjustSoundSystem();
 
@@ -2104,6 +2178,7 @@ private EditText newmsg;
         if (wakeLock.isHeld())
             wakeLock.release();
         service.setOnVoiceTransmissionToggleListener(null);
+        service.setOnVideoCaptureStateListener(null);
 
         service.getEventHandler().unregisterListener(this);
 
@@ -2159,6 +2234,10 @@ private EditText newmsg;
             case BLUETOOTH:
                 if ((mConnection != null) && mConnection.isBound())
                     getService().watchBluetoothHeadset();
+                break;
+            case CAMERA:
+                if ((mConnection != null) && mConnection.isBound())
+                    startVideoCaptureInternal(getService().isUsingFrontCamera());
                 break;
             default:
                 break;
@@ -2593,5 +2672,87 @@ private EditText newmsg;
         int sound = sounds.get(bVoiceActive ? SOUND_VOXON : SOUND_VOXOFF);
         if (sound != 0)
             audioIcons.play(sound, 1.0f, 1.0f, 0, 0, 1.0f);
+    }
+
+    private void announceVideoStatus(int msgResId) {
+        String msg = getString(msgResId);
+        Toast.makeText(this, msg, Toast.LENGTH_SHORT).show();
+        if (ttsWrapper != null) {
+            ttsWrapper.speak(msg);
+        }
+    }
+
+    void onLocalPreviewSurfaceChanged(Surface surface) {
+        localPreviewSurface = surface;
+        if ((mConnection != null) && mConnection.isBound()) {
+            getService().setLocalPreviewSurface(surface);
+        }
+    }
+
+    void toggleVideoTransmission() {
+        if ((mConnection == null) || !mConnection.isBound()) {
+            return;
+        }
+        if (getService().isVideoTransmissionEnabled()) {
+            getService().stopVideoCapture();
+            if (sounds.get(SOUND_VOICETXOFF) != 0) {
+                audioIcons.play(sounds.get(SOUND_VOICETXOFF), 1.0f, 1.0f, 0, 0, 1.0f);
+            }
+            announceVideoStatus(R.string.video_stopped);
+            refreshVideoUi();
+            return;
+        }
+        if (getClient().getMyChannelID() <= 0) {
+            announceVideoStatus(R.string.err_video_not_in_channel);
+            return;
+        }
+        if (Permissions.CAMERA.request(this)) {
+            startVideoCaptureInternal(getService().isUsingFrontCamera());
+        }
+    }
+
+    private void startVideoCaptureInternal(boolean frontCamera) {
+        if ((mConnection == null) || !mConnection.isBound()) {
+            return;
+        }
+        if (getService().startVideoCapture(frontCamera, localPreviewSurface)) {
+            if (sounds.get(SOUND_VOICETXON) != 0) {
+                audioIcons.play(sounds.get(SOUND_VOICETXON), 1.0f, 1.0f, 0, 0, 1.0f);
+            }
+            announceVideoStatus(getService().isUsingFrontCamera()
+                    ? R.string.video_started_front
+                    : R.string.video_started_back);
+        } else {
+            announceVideoStatus(R.string.err_start_video);
+        }
+        refreshVideoUi();
+    }
+
+    void switchCameraTransmission() {
+        if ((mConnection == null) || !mConnection.isBound() || !getService().isVideoTransmissionEnabled()) {
+            return;
+        }
+        if (getService().switchCamera(localPreviewSurface)) {
+            announceVideoStatus(getService().isUsingFrontCamera()
+                    ? R.string.video_started_front
+                    : R.string.video_started_back);
+        } else {
+            announceVideoStatus(R.string.err_start_video);
+        }
+        refreshVideoUi();
+    }
+
+    void refreshVideoUi() {
+        invalidateOptionsMenu();
+        if (mediaFragment != null && mediaFragment.isAdded()) {
+            boolean active = (mConnection != null) && mConnection.isBound() && getService().isVideoTransmissionEnabled();
+            boolean multi = (mConnection != null) && mConnection.isBound() && getService().hasMultipleCameras();
+            mediaFragment.updateVideoControls(active, multi);
+        }
+    }
+
+    @Override
+    public void onVideoCaptureStateChanged(boolean active, boolean frontCamera) {
+        refreshVideoUi();
     }
 }
