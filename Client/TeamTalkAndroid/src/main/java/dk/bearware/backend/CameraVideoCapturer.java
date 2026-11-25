@@ -73,6 +73,7 @@ public class CameraVideoCapturer {
     private int outputWidth = TARGET_HEIGHT;
     private int outputHeight = TARGET_WIDTH;
     private int rotationDegrees = 0;
+    private Range<Integer> targetFpsRange;
     private byte[] i420Buffer;
     private long lastFrameTimeNs = 0L;
     private volatile boolean started = false;
@@ -150,6 +151,8 @@ public class CameraVideoCapturer {
             CameraCharacteristics chars = cm.getCameraCharacteristics(chosenId);
             StreamConfigurationMap map = chars.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP);
             Size best = pickBestSize(map != null ? map.getOutputSizes(ImageFormat.YUV_420_888) : null);
+            Range<Integer> bestFpsRange = pickBestFpsRange(
+                    chars.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES));
 
             Integer sensorOrientationObj = chars.get(CameraCharacteristics.SENSOR_ORIENTATION);
             int sensorOrientation = (sensorOrientationObj != null) ? sensorOrientationObj : 0;
@@ -168,6 +171,7 @@ public class CameraVideoCapturer {
                 captureWidth = best.getWidth();
                 captureHeight = best.getHeight();
                 rotationDegrees = rot;
+                targetFpsRange = bestFpsRange;
                 if (rot == 90 || rot == 270) {
                     outputWidth = captureHeight;
                     outputHeight = captureWidth;
@@ -209,7 +213,7 @@ public class CameraVideoCapturer {
             cameraHandler = new Handler(cameraThread.getLooper());
 
             imageReader = ImageReader.newInstance(captureWidth, captureHeight, ImageFormat.YUV_420_888, 3);
-            imageReader.setOnImageAvailableListener(onImageAvailableListener, cameraHandler);
+            imageReader.setOnImageAvailableListener(this::onImageAvailable, cameraHandler);
 
             try {
                 cm.openCamera(activeCameraId, deviceStateCallback, cameraHandler);
@@ -356,8 +360,9 @@ public class CameraVideoCapturer {
                             }
                             builder.set(CaptureRequest.CONTROL_AF_MODE,
                                     CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_VIDEO);
-                            builder.set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE,
-                                    new Range<>(TARGET_FPS, TARGET_FPS));
+                            if (targetFpsRange != null) {
+                                builder.set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, targetFpsRange);
+                            }
                             session.setRepeatingRequest(builder.build(), null, cameraHandler);
                         } catch (Exception e) {
                             Log.e(TAG, "Failed to start repeating camera request", e);
@@ -378,7 +383,7 @@ public class CameraVideoCapturer {
         }
     }
 
-    private final ImageReader.OnImageAvailableListener onImageAvailableListener = reader -> {
+    private void onImageAvailable(ImageReader reader) {
         Image image = null;
         try {
             image = reader.acquireLatestImage();
@@ -415,7 +420,7 @@ public class CameraVideoCapturer {
                 image.close();
             }
         }
-    };
+    }
 
     private static boolean yuv420ToRotatedI420(
             @NonNull Image image,
@@ -529,6 +534,24 @@ public class CameraVideoCapturer {
             }
         }
         return (best != null) ? best : new Size(TARGET_WIDTH, TARGET_HEIGHT);
+    }
+
+    @Nullable
+    private Range<Integer> pickBestFpsRange(@Nullable Range<Integer>[] ranges) {
+        if (ranges == null || ranges.length == 0) {
+            return null;
+        }
+        Range<Integer> best = null;
+        int bestUpper = Integer.MAX_VALUE;
+        for (Range<Integer> r : ranges) {
+            int low = r.getLower();
+            int high = r.getUpper();
+            if (low <= TARGET_FPS && high >= TARGET_FPS && high < bestUpper) {
+                best = r;
+                bestUpper = high;
+            }
+        }
+        return best;
     }
 
     @SuppressWarnings("deprecation")

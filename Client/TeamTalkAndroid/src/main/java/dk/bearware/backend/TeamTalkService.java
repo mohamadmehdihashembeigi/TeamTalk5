@@ -174,9 +174,8 @@ public class TeamTalkService extends Service
     }
     private OnVideoCaptureStateListener onVideoCaptureStateListener;
     private CameraVideoCapturer cameraCapturer;
-    private boolean videoTransmissionEnabled;
+    private volatile boolean videoTransmissionEnabled;
     private boolean preferFrontCamera = true;
-    private Surface pendingPreviewSurface;
     private boolean listeningPhoneStateChanges;
     private boolean txSuspended;
     private boolean voxSuspended;
@@ -434,7 +433,12 @@ public class TeamTalkService extends Service
                     .setContentText(getNotificationText())
                     .build();
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    ServiceCompat.startForeground(this, UI_WIDGET_ID, widget, getActiveForegroundServiceTypes());
+                    try {
+                        ServiceCompat.startForeground(this, UI_WIDGET_ID, widget, getActiveForegroundServiceTypes());
+                    } catch (RuntimeException e) {
+                        Log.w(TAG, "Unable to update foreground service type", e);
+                        notificationManager.notify(UI_WIDGET_ID, widget);
+                    }
                 } else {
                     notificationManager.notify(UI_WIDGET_ID, widget);
                 }
@@ -485,7 +489,6 @@ public class TeamTalkService extends Service
     }
 
     public void setLocalPreviewSurface(Surface surface) {
-        pendingPreviewSurface = surface;
         if (cameraCapturer != null) {
             cameraCapturer.setPreviewSurface(surface);
         }
@@ -501,7 +504,6 @@ public class TeamTalkService extends Service
 
         stopVideoCapture();
         preferFrontCamera = frontCamera;
-        pendingPreviewSurface = previewSurface;
 
         CameraVideoCapturer capturer = new CameraVideoCapturer(this, new CameraVideoCapturer.FrameConsumer() {
             @Override
