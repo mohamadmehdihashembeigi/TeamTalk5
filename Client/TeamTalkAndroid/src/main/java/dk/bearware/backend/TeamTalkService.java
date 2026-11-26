@@ -548,7 +548,7 @@ public class TeamTalkService extends Service
 
         VideoCodec vidcodec = new VideoCodec();
         vidcodec.nCodec = Codec.WEBM_VP8_CODEC;
-        vidcodec.webm_vp8.nRcTargetBitrate = 512;
+        vidcodec.webm_vp8.nRcTargetBitrate = 800;
 
         if (!ttclient.startVideoCaptureTransmission(vidcodec)) {
             Log.e(TAG, "startVideoCaptureTransmission failed");
@@ -967,7 +967,7 @@ public class TeamTalkService extends Service
     }
 
     void createEventTimer() {
-        eventTimer = new CountDownTimer(10000, 100) {
+        eventTimer = new CountDownTimer(10000, 33) {
             private boolean prevVoiceTransmissionState = isVoiceTransmissionEnabled();
             private boolean prevVoiceActivationState = isVoiceActivationEnabled();
 

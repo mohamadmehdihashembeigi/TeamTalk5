@@ -75,6 +75,7 @@ public class CameraVideoCapturer {
     private int rotationDegrees = 0;
     private Range<Integer> targetFpsRange;
     private byte[] i420Buffer;
+    private byte[] planeScratch;
     private long lastFrameTimeNs = 0L;
     private volatile boolean started = false;
 
@@ -434,7 +435,7 @@ public class CameraVideoCapturer {
         }
     }
 
-    private static boolean yuv420ToRotatedI420(
+    private boolean yuv420ToRotatedI420(
             @NonNull Image image,
             int rotationDegrees,
             @NonNull byte[] out,
@@ -473,7 +474,7 @@ public class CameraVideoCapturer {
         return true;
     }
 
-    private static void rotatePlane(
+    private void rotatePlane(
             @NonNull ByteBuffer srcBuf,
             int srcW,
             int srcH,
@@ -484,16 +485,24 @@ public class CameraVideoCapturer {
             int dstW,
             int dstH,
             int rotationDegrees) {
+        ByteBuffer dup = srcBuf.duplicate();
+        dup.position(0);
+        int len = dup.remaining();
+        if (planeScratch == null || planeScratch.length < len) {
+            planeScratch = new byte[len];
+        }
+        byte[] src = planeScratch;
+        dup.get(src, 0, len);
+
         if (rotationDegrees == 0) {
             for (int y = 0; y < srcH; y++) {
                 int srcRow = y * rowStride;
                 int dstRow = dstOffset + y * dstW;
                 if (pixelStride == 1) {
-                    srcBuf.position(srcRow);
-                    srcBuf.get(dst, dstRow, srcW);
+                    System.arraycopy(src, srcRow, dst, dstRow, srcW);
                 } else {
                     for (int x = 0; x < srcW; x++) {
-                        dst[dstRow + x] = srcBuf.get(srcRow + x * pixelStride);
+                        dst[dstRow + x] = src[srcRow + x * pixelStride];
                     }
                 }
             }
@@ -502,7 +511,7 @@ public class CameraVideoCapturer {
                 int srcRow = y * rowStride;
                 int dx = srcH - 1 - y;
                 for (int x = 0; x < srcW; x++) {
-                    dst[dstOffset + x * dstW + dx] = srcBuf.get(srcRow + x * pixelStride);
+                    dst[dstOffset + x * dstW + dx] = src[srcRow + x * pixelStride];
                 }
             }
         } else if (rotationDegrees == 180) {
@@ -511,7 +520,7 @@ public class CameraVideoCapturer {
                 int dy = srcH - 1 - y;
                 int dstRow = dstOffset + dy * dstW;
                 for (int x = 0; x < srcW; x++) {
-                    dst[dstRow + (srcW - 1 - x)] = srcBuf.get(srcRow + x * pixelStride);
+                    dst[dstRow + (srcW - 1 - x)] = src[srcRow + x * pixelStride];
                 }
             }
         } else { // 270 degrees clockwise
@@ -519,7 +528,7 @@ public class CameraVideoCapturer {
                 int srcRow = y * rowStride;
                 for (int x = 0; x < srcW; x++) {
                     int dy = srcW - 1 - x;
-                    dst[dstOffset + dy * dstW + y] = srcBuf.get(srcRow + x * pixelStride);
+                    dst[dstOffset + dy * dstW + y] = src[srcRow + x * pixelStride];
                 }
             }
         }

@@ -441,48 +441,40 @@ ClientEventListener.OnUserDesktopWindowListener {
     	case MEDIAFILE_SESSION : {
     		userid &= USERID_MASK;
     		
-            VideoFrame wnd = ttservice.getTTInstance().acquireUserMediaVideoFrame(userid);
-            
+            VideoFrame wnd = null;
+            VideoFrame next;
+            // Drain all queued frames so the VP8 decoder never drops P-frames
+            while ((next = ttservice.getTTInstance().acquireUserMediaVideoFrame(userid)) != null) {
+                wnd = next;
+            }
             if(wnd == null) {
                 return null;
             }
             
-            if(prev_bmp != null) {
-                // create new bitmap if size 
-                if(prev_bmp.getWidth() != wnd.nWidth || prev_bmp.getHeight() != wnd.nHeight)
-                    prev_bmp = Bitmap.createBitmap(wnd.nWidth, wnd.nHeight, Bitmap.Config.ARGB_8888);
-            }
-            else {
-                prev_bmp = Bitmap.createBitmap(wnd.nWidth, wnd.nHeight, Bitmap.Config.ARGB_8888);
-            }
-            
+            Bitmap bmp = Bitmap.createBitmap(wnd.nWidth, wnd.nHeight, Bitmap.Config.ARGB_8888);
             convertBgraToRgba(wnd.frameBuffer);
-            prev_bmp.copyPixelsFromBuffer(ByteBuffer.wrap(wnd.frameBuffer));
+            bmp.copyPixelsFromBuffer(ByteBuffer.wrap(wnd.frameBuffer));
             
-            return prev_bmp;
+            return bmp;
     	}
     	case WEBCAM_SESSION : {
     		userid &= USERID_MASK;
     		
-            VideoFrame wnd = ttservice.getTTInstance().acquireUserVideoCaptureFrame(userid);
-            
+            VideoFrame wnd = null;
+            VideoFrame next;
+            // Drain all queued frames so the VP8 decoder never drops P-frames
+            while ((next = ttservice.getTTInstance().acquireUserVideoCaptureFrame(userid)) != null) {
+                wnd = next;
+            }
             if(wnd == null) {
                 return null;
             }
             
-            if(prev_bmp != null) {
-                // create new bitmap if size 
-                if(prev_bmp.getWidth() != wnd.nWidth || prev_bmp.getHeight() != wnd.nHeight)
-                    prev_bmp = Bitmap.createBitmap(wnd.nWidth, wnd.nHeight, Bitmap.Config.ARGB_8888);
-            }
-            else {
-                prev_bmp = Bitmap.createBitmap(wnd.nWidth, wnd.nHeight, Bitmap.Config.ARGB_8888);
-            }
-            
+            Bitmap bmp = Bitmap.createBitmap(wnd.nWidth, wnd.nHeight, Bitmap.Config.ARGB_8888);
             convertBgraToRgba(wnd.frameBuffer);
-            prev_bmp.copyPixelsFromBuffer(ByteBuffer.wrap(wnd.frameBuffer));
+            bmp.copyPixelsFromBuffer(ByteBuffer.wrap(wnd.frameBuffer));
             
-            return prev_bmp;
+            return bmp;
     	}
     	default : {
     		Log.e(TAG, "Unknown media session");
