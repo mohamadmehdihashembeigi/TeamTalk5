@@ -548,7 +548,7 @@ public class TeamTalkService extends Service
 
         VideoCodec vidcodec = new VideoCodec();
         vidcodec.nCodec = Codec.WEBM_VP8_CODEC;
-        vidcodec.webm_vp8.nRcTargetBitrate = 384;
+        vidcodec.webm_vp8.nRcTargetBitrate = 512;
 
         if (!ttclient.startVideoCaptureTransmission(vidcodec)) {
             Log.e(TAG, "startVideoCaptureTransmission failed");

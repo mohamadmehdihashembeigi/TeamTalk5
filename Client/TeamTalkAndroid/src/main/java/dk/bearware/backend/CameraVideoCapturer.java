@@ -352,12 +352,24 @@ public class CameraVideoCapturer {
                         }
                         captureSession = session;
                         try {
-                            CaptureRequest.Builder builder =
-                                    cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
+                            CaptureRequest.Builder builder;
+                            try {
+                                builder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_RECORD);
+                            } catch (CameraAccessException e) {
+                                builder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
+                            }
                             builder.addTarget(imageReader.getSurface());
                             if (previewSurface != null && previewSurface.isValid()) {
                                 builder.addTarget(previewSurface);
                             }
+                            builder.set(CaptureRequest.CONTROL_MODE,
+                                    CaptureRequest.CONTROL_MODE_AUTO);
+                            builder.set(CaptureRequest.CONTROL_AE_MODE,
+                                    CaptureRequest.CONTROL_AE_MODE_ON);
+                            builder.set(CaptureRequest.CONTROL_AWB_MODE,
+                                    CaptureRequest.CONTROL_AWB_MODE_AUTO);
+                            builder.set(CaptureRequest.CONTROL_AE_ANTIBANDING_MODE,
+                                    CaptureRequest.CONTROL_AE_ANTIBANDING_MODE_AUTO);
                             builder.set(CaptureRequest.CONTROL_AF_MODE,
                                     CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_VIDEO);
                             if (targetFpsRange != null) {
@@ -525,8 +537,11 @@ public class CameraVideoCapturer {
             if ((w % 2) != 0 || (h % 2) != 0 || w < 160 || h < 120) {
                 continue;
             }
-            // Prefer resolutions <= 640x480 and closest to 640x480 for low latency on VP8
+            // Prefer 16-aligned resolutions <= 640x480 and closest to 640x480 for VP8
             int penalty = (w > TARGET_WIDTH || h > TARGET_HEIGHT) ? 10000 : 0;
+            if ((w % 16) != 0 || (h % 16) != 0) {
+                penalty += 200;
+            }
             int score = penalty + Math.abs(w - TARGET_WIDTH) + Math.abs(h - TARGET_HEIGHT);
             if (score < bestScore) {
                 bestScore = score;
@@ -541,17 +556,24 @@ public class CameraVideoCapturer {
         if (ranges == null || ranges.length == 0) {
             return null;
         }
-        Range<Integer> best = null;
+        Range<Integer> bestDynamic = null;
+        Range<Integer> bestAny = null;
         int bestUpper = Integer.MAX_VALUE;
         for (Range<Integer> r : ranges) {
             int low = r.getLower();
             int high = r.getUpper();
-            if (low <= TARGET_FPS && high >= TARGET_FPS && high < bestUpper) {
-                best = r;
-                bestUpper = high;
+            if (low <= TARGET_FPS && high >= TARGET_FPS && high <= 30) {
+                if (low < high) {
+                    if (bestDynamic == null || high > bestDynamic.getUpper()) {
+                        bestDynamic = r;
+                    }
+                } else if (high < bestUpper) {
+                    bestAny = r;
+                    bestUpper = high;
+                }
             }
         }
-        return best;
+        return (bestDynamic != null) ? bestDynamic : bestAny;
     }
 
     @SuppressWarnings("deprecation")

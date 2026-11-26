@@ -130,9 +130,11 @@ namespace vidcap {
         if (frame_len != expected_len)
             return false;
 
-        // Camera2 YUV_420_888 converted to I420 is top-down (top_down = true)
+        // VideoThread passes bottom_up = !vid.top_down to VpxEncoder::Encode(),
+        // which calls vpx_img_flip() when !bottom_up. Use top_down = false
+        // (matching MFCapture) so upright Camera2 I420 frames are not flipped.
         media::VideoFrame frm(const_cast<char*>(frame_data), frame_len,
-                              width, height, media::FOURCC_I420, true);
+                              width, height, media::FOURCC_I420, false);
         m_callback(frm, nullptr);
         return true;
     }
